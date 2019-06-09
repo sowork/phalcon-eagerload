@@ -15,12 +15,19 @@ final class QueryBuilder extends Builder
 
     public function columns($columns)
     {
+        $preg = '/^\[[\w\d]+\]$/';
         if (is_string($columns)) {
-            $columns = array_map(function($column) {
+            $columns = array_map(function($column) use ($preg) {
+                if (preg_match($preg, $column)) {
+                    return $column;
+                }
                 return '[' . trim($column) . ']';
             }, explode(',', $columns));
         } elseif (is_array($columns)) {
             foreach ($columns as &$column) {
+                if (preg_match($preg, $column)) {
+                    continue;
+                }
                 $column = "[$column]";
             }
         }
