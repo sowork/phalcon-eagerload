@@ -1,0 +1,14 @@
+{
+    "name": "sowork/phalcon-eagerload",
+    "description": "phalcon eagerload",
+    "type": "phalcon eagerload package",
+    "license": "mit",
+    "authors": [
+        {
+            "name": "sowork",
+            "email": "soworkxing@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {}
+}
