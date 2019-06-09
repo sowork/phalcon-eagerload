@@ -1,5 +1,5 @@
 <?php
-namespace Sowork\GraphQL\Model\EagerLoading;
+namespace Sowork\EagerLoad\Model\EagerLoading;
 
 use http\Exception\RuntimeException;
 use Phalcon\Mvc\Model\Relation;

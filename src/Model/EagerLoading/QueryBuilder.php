@@ -1,5 +1,5 @@
 <?php
-namespace Sowork\GraphQL\Model\EagerLoading;
+namespace Sowork\EagerLoad\Model\EagerLoading;
 
 use Phalcon\Mvc\Model\Manager;
 use Phalcon\Mvc\Model\Query\Builder;

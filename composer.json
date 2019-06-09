@@ -1,7 +1,6 @@
 {
     "name": "sowork/phalcon-eagerload",
     "description": "phalcon eagerload",
-    "type": "phalcon eagerload package",
     "license": "mit",
     "authors": [
         {
@@ -10,5 +9,10 @@
         }
     ],
     "minimum-stability": "dev",
-    "require": {}
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Sowork\\EagerLoad\\": "src/"
+        }
+    }
 }

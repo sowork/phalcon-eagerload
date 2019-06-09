@@ -1,5 +1,5 @@
 <?php
-namespace Sowork\GraphQL\Model\EagerLoading;
+namespace Sowork\EagerLoad\Model\EagerLoading;
 
 use Phalcon\Di;
 use Phalcon\Mvc\Model\Relation;

@@ -1,5 +1,5 @@
 <?php
-namespace Sowork\GraphQL\Traits;
+namespace Sowork\EagerLoad\Traits;
 
 trait EagerLoadingTrait
 {
@@ -42,7 +42,7 @@ trait EagerLoadingTrait
         if ($ret->count()) {
             array_unshift($arguments, __CLASS__);
             array_unshift($arguments, $ret);
-            $ret = call_user_func_array('Sowork\GraphQL\Model\EagerLoading\Loader::fromResultset', $arguments);
+            $ret = call_user_func_array('Sowork\EagerLoad\Model\EagerLoading\Loader::fromResultset', $arguments);
         }
         return $ret;
     }
