@@ -158,12 +158,12 @@ MSG;
 
     /**
      * Create and get from a Resultset
-     * @param Simple $subject
+     * @param ModelInterface|ModelInterface[]|Simple $subject
      * @param mixed  ...$arguments
-     * @return Simple
+     * @return ModelInterface|ModelInterface[]|Simple
      * @throws \ReflectionException
      */
-    public static function fromResultset(Simple $subject)
+    public static function fromResultset($subject)
     {
         $reflection = new \ReflectionClass(__CLASS__);
         $instance   = $reflection->newInstanceArgs(func_get_args());
@@ -350,11 +350,13 @@ MSG;
     }
 
     /**
+     * @param array $eagerTrees
      * @return $this
      */
-    public function execute()
+    public function execute($eagerTrees = [])
     {
-        foreach ($this->buildTree() as $eagerLoad) {
+        $eagerTrees = $eagerTrees ?? $this->buildTree();
+        foreach ($eagerTrees as $eagerLoad) {
             $eagerLoad->load();
         }
 
@@ -363,12 +365,13 @@ MSG;
 
     /**
      * Loader::execute() alias
-     *
+     * @param array $eagerTrees
      * @return $this
      */
-    public function load()
+    public function load($eagerTrees = [])
     {
-        foreach ($this->buildTree() as $eagerLoad) {
+        $eagerTrees = $eagerTrees ?? $this->buildTree();
+        foreach ($eagerTrees as $eagerLoad) {
             $eagerLoad->load();
         }
 

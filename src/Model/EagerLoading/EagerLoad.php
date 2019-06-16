@@ -192,6 +192,7 @@ final class EagerLoad
             if ($subjectSize === 1) {
                 // Keep all records in memory
                 foreach ($builder->getQuery()->execute() as $record) {
+                    var_dump($record);exit;
                     $records[] = $record;
                 }
 
@@ -252,8 +253,8 @@ final class EagerLoad
         }
 
         $this->subject = $records;
-        if ($this->delayLoads) {
-            foreach ($this->delayLoads as $delayLoad) {
+        if (isset($this->delayLoads[$this->aliasName])) {
+            foreach ($this->delayLoads[$this->aliasName] as $delayLoad) {
                 $delayLoad->load();
             }
             $this->delayLoads = [];
@@ -262,7 +263,7 @@ final class EagerLoad
         return $this;
     }
 
-    public function delayLoad(EagerLoad $load) {
-        $this->delayLoads[] = $load;
+    public function delayLoad(EagerLoad $load, $withAliasName) {
+        $this->delayLoads[$withAliasName][] = $load;
     }
 }

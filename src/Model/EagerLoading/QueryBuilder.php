@@ -6,13 +6,6 @@ use Phalcon\Mvc\Model\Query\Builder;
 
 final class QueryBuilder extends Builder
 {
-//    const E_NOT_ALLOWED_METHOD_CALL = 'When eager loading relations queries must return full entities';
-    
-//    public function distinct($distinct)
-//    {
-//        throw new \LogicException(static::E_NOT_ALLOWED_METHOD_CALL);
-//    }
-
     public function columns($columns)
     {
         $preg = '/^\[[\w\d]+\]$/';
@@ -69,19 +62,34 @@ final class QueryBuilder extends Builder
         return $this->where($conditions, $bindParams, $bindTypes);
     }
 
-    public function with()
+    public function with($relations)
     {
-        $arguments = func_get_args();
-        $relations = $this->loader->parseArguments($arguments);
-        $nestedRelations = [];
-        foreach ($relations as $key => $relation) {
-            $nestedRelations["{$this->currentAliasName}.$key"] = $relation;
+        $arguments = is_string($relations) ? func_get_args() : $relations;
+        $isNestedLoader = true;
+        if (!$this->loader) {
+            $isNestedLoader = false;
+            $this->loader = new Loader($arguments[0], $arguments[1]);
+            unset($arguments[0]);
+            unset($arguments[1]);
         }
-        $eagerTrees = $this->loader->buildLoad($nestedRelations, true, count(explode('.', $this->currentAliasName)));
-        foreach ($eagerTrees as $key => $eagerTree) {
-            $this->parent->delayLoad($eagerTree);
+        $relations = $this->loader->parseArguments($arguments);
+        if ($this->currentAliasName && $isNestedLoader) {
+            $nestedRelations = [];
+            foreach ($relations as $key => $relation) {
+                $nestedRelations["{$this->currentAliasName}.$key"] = $relation;
+            }
+            $relations = $nestedRelations;
+        }
+        $nestedLevel = $this->currentAliasName ? count(explode('.', $this->currentAliasName)) : 0;
+        $eagerTrees = $this->loader->buildLoad($relations, $isNestedLoader, $nestedLevel);
+
+        if ($isNestedLoader) {
+            foreach ($eagerTrees as $key => $eagerTree) {
+                $this->parent->delayLoad($eagerTree, $this->currentAliasName);
+            }
+            return $this;
         }
 
-        return $this;
+        return $this->loader->execute($eagerTrees)->get();
     }
 }
