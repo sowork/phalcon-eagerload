@@ -202,14 +202,15 @@ MSG;
      */
     public static function parseArguments(array $arguments)
     {
+//        dump($arguments);
         if (empty($arguments)) {
             throw new \InvalidArgumentException('Arguments can not be empty');
         }
 
         $relations = [];
 
-        if (count($arguments) === 1 && !empty($arguments[0]) && is_array($arguments[0])) {
-            foreach ($arguments[0] as $relationAlias => $queryConstraints) {
+        if (count($arguments) === 1 && !empty(current($arguments))) {
+            foreach ($arguments as $relationAlias => $queryConstraints) {
                 if (is_string($relationAlias)) {
                     $relations[$relationAlias] = is_callable($queryConstraints) ? $queryConstraints : null;
                 } else {

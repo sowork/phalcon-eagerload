@@ -192,7 +192,6 @@ final class EagerLoad
             if ($subjectSize === 1) {
                 // Keep all records in memory
                 foreach ($builder->getQuery()->execute() as $record) {
-                    var_dump($record);exit;
                     $records[] = $record;
                 }
 

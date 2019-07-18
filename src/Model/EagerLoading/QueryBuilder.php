@@ -6,29 +6,6 @@ use Phalcon\Mvc\Model\Query\Builder;
 
 final class QueryBuilder extends Builder
 {
-    public function columns($columns)
-    {
-        $preg = '/^\[[\w\d]+\]$/';
-        if (is_string($columns)) {
-            $columns = array_map(function($column) use ($preg) {
-                if (preg_match($preg, $column)) {
-                    return $column;
-                }
-                return '[' . trim($column) . ']';
-            }, explode(',', $columns));
-        } elseif (is_array($columns)) {
-            foreach ($columns as &$column) {
-                if (preg_match($preg, $column)) {
-                    continue;
-                }
-                $column = "[$column]";
-            }
-        }
-        $this->_columns = $columns;
-
-        return $this;
-    }
-
     /** @var Loader|EagerLoad */
     private $parent;
     /** @var string */
@@ -64,7 +41,9 @@ final class QueryBuilder extends Builder
 
     public function with($relations)
     {
+//        dd($relations);
         $arguments = is_string($relations) ? func_get_args() : $relations;
+//        dump($arguments);
         $isNestedLoader = true;
         if (!$this->loader) {
             $isNestedLoader = false;
@@ -72,7 +51,12 @@ final class QueryBuilder extends Builder
             unset($arguments[0]);
             unset($arguments[1]);
         }
+//        dump(($arguments));
+        if (!$arguments) {
+            return $this;
+        }
         $relations = $this->loader->parseArguments($arguments);
+//        dump($this->currentAliasName);
         if ($this->currentAliasName && $isNestedLoader) {
             $nestedRelations = [];
             foreach ($relations as $key => $relation) {

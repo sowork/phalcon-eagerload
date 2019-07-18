@@ -13,5 +13,8 @@
         "psr-4": {
             "Sowork\\EagerLoad\\": "src/"
         }
+    },
+    "require-dev": {
+        "phalcon/dd": "^1.1"
     }
 }
