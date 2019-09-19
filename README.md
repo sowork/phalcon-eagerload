@@ -15,8 +15,8 @@ composer require sowork/phalcon-eagerload
 
 
 ## 使用
-
-* 在你的Model中引入 `Sowork\EagerLoad\Traits\EagerLoadingTrait` 文件，并定义相对的关联关系
+* 在项目中注册 `\Sowork\EagerLoad\EagerLoadServiceProvider::class`
+* 在Model中引入 `Sowork\EagerLoad\Traits\EagerLoadingTrait` 文件，并定义相对的关联关系
 
   ```php
   <?php
