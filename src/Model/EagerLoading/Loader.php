@@ -4,12 +4,14 @@ namespace Sowork\EagerLoad\Model\EagerLoading;
 use Phalcon\Di;
 use Phalcon\Mvc\Model\Relation;
 use Phalcon\Mvc\Model\Resultset\Simple;
+use Phalcon\Mvc\Model\ResultsetInterface;
 use Phalcon\Mvc\ModelInterface;
+use Tightenco\Collect\Support\Collection;
 
 final class Loader
 {
     const E_INVALID_SUBJECT = <<<'MSG'
-Expected value of `subject` is either a ModelInterface object, a Simple object or an array of ModelInterface objects
+Expected value of `subject` is either a ModelInterface object、 a Simple object or Collection object of ModelInterface objects
 MSG;
 
     /** @var ModelInterface[] */
@@ -28,86 +30,26 @@ MSG;
     protected $resolvedRelations;
 
     /**
-     * @param ModelInterface|ModelInterface[]|Simple $from
+     * @param ModelInterface|ResultsetInterface $from
      * @param string $className
-     * @param ...$arguments
      * @throws \InvalidArgumentException
      */
     public function __construct($from, $className)
     {
-        $error     = false;
-        $arguments = array_slice(func_get_args(), 2);
-
-        if (!$from instanceof ModelInterface) {
-            if (!$from instanceof Simple) {
-                if (($fromType = gettype($from)) !== 'array') {
-                    if (null !== $from && $fromType !== 'boolean') {
-                        $error = true;
-                    } else {
-                        $from = null;
-                    }
-                } else {
-                    $from = array_filter($from);
-
-                    if (empty($from)) {
-                        $from = null;
-                    } else {
-                        foreach ($from as $el) {
-                            if ($el instanceof ModelInterface) {
-                                if ($className === null) {
-                                    $className = get_class($el);
-                                }
-//                                else {
-//                                    if ($className !== get_class($el)) {
-//                                        $error = true;
-//                                        break;
-//                                    }
-//                                }
-                            } else {
-                                $error = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            } else {
-                $prev = $from;
-                $from = [];
-
-                foreach ($prev as $record) {
-                    $from[] = $record;
-                }
-
-                if (empty($from)) {
-                    $from = null;
-                }
-//                else {
-//                    $className = get_class($record);
-//                }
-            }
-
-            $this->mustReturnAModel = false;
+        $this->subjectClassName = $className;
+        if ($from instanceof ResultsetInterface) {
+            $this->subject = self::convertResultSetToCollection($from, $this->subjectClassName);
+        } else if ($from instanceof ModelInterface || $from instanceof Collection) {
+            $this->subject = $from;
         } else {
-//            $className = get_class($from);
-            $from      = [$from];
-
-            $this->mustReturnAModel = true;
-        }
-
-        if ($error) {
             throw new \InvalidArgumentException(static::E_INVALID_SUBJECT);
         }
-
-        $this->subject = $from;
-        $this->subjectClassName = $className;
-        $this->eagerLoads = ($from === null || empty($arguments)) ? [] : static::parseArguments($arguments);
     }
 
     /**
      * Create and get from a mixed $subject
      *
-     * @param ModelInterface|ModelInterface[]|Simple $subject
-     * @param mixed ...$arguments
+     * @param ModelInterface|ResultsetInterface $subject
      * @throws \InvalidArgumentException
      * @return mixed
      */
@@ -115,10 +57,8 @@ MSG;
     {
         if ($subject instanceof ModelInterface) {
             $ret = call_user_func_array('static::fromModel', func_get_args());
-        } elseif ($subject instanceof Simple) {
+        } elseif ($subject instanceof ResultsetInterface) {
             $ret = call_user_func_array('static::fromResultset', func_get_args());
-        } elseif (is_array($subject)) {
-            $ret = call_user_func_array('static::fromArray', func_get_args());
         } else {
             throw new \InvalidArgumentException(static::E_INVALID_SUBJECT);
         }
@@ -129,7 +69,6 @@ MSG;
     /**
      * Create and get from a Model
      * @param ModelInterface $subject
-     * @param mixed          ...$arguments
      * @return ModelInterface
      * @throws \ReflectionException
      */
@@ -142,25 +81,9 @@ MSG;
     }
 
     /**
-     * Create and get from an array
-     * @param ModelInterface[] $subject
-     * @param mixed            ...$arguments
-     * @return array
-     * @throws \ReflectionException
-     */
-    public static function fromArray(array $subject)
-    {
-        $reflection = new \ReflectionClass(__CLASS__);
-        $instance   = $reflection->newInstanceArgs(func_get_args());
-
-        return $instance->execute()->get();
-    }
-
-    /**
      * Create and get from a Resultset
-     * @param ModelInterface|ModelInterface[]|Simple $subject
-     * @param mixed  ...$arguments
-     * @return ModelInterface|ModelInterface[]|Simple
+     * @param ResultsetInterface $subject
+     * @return Collection
      * @throws \ReflectionException
      */
     public static function fromResultset($subject)
@@ -176,17 +99,11 @@ MSG;
      */
     public function get()
     {
-        $ret = $this->subject;
-
-        if (null !== $ret && $this->mustReturnAModel) {
-            $ret = $ret[0];
-        }
-
-        return $ret;
+        return $this->subject;
     }
 
     /**
-     * @return null|ModelInterface[]
+     * @return Simple|ModelInterface
      */
     public function getSubject()
     {
@@ -202,31 +119,21 @@ MSG;
      */
     public static function parseArguments(array $arguments)
     {
-//        dump($arguments);
         if (empty($arguments)) {
             throw new \InvalidArgumentException('Arguments can not be empty');
         }
 
         $relations = [];
 
-        if (count($arguments) === 1 && !empty(current($arguments))) {
-            foreach ($arguments as $relationAlias => $queryConstraints) {
-                if (is_string($relationAlias)) {
-                    $relations[$relationAlias] = is_callable($queryConstraints) ? $queryConstraints : null;
-                } else {
-                    if (is_string($queryConstraints)) {
-                        $relations[$queryConstraints] = null;
-                    }
-                }
-            }
-        } else {
-            foreach ($arguments as $relationAlias) {
-                if (is_string($relationAlias)) {
-                    $relations[$relationAlias] = null;
+        foreach ($arguments as $relationAlias => $queryConstraints) {
+            if (is_string($relationAlias)) {
+                $relations[$relationAlias] = is_callable($queryConstraints) ? $queryConstraints : null;
+            } else {
+                if (is_string($queryConstraints)) {
+                    $relations[$queryConstraints] = null;
                 }
             }
         }
-
         if (empty($relations)) {
             return [];
         }
@@ -332,10 +239,7 @@ MSG;
                 $this->eagerRelations[$name] = new EagerLoad($relation, $constraints, $parent, $name, $this);
             } while (++$nestingLevel < $nestingLevels);
         }
-//        var_dump(array_keys($this->eagerRelations));
-//        var_dump(array_keys($this->oldEagerRelations));
-//
-//        var_dump(array_keys(array_diff_key($this->eagerRelations, $this->oldEagerRelations)));
+
         return array_diff_key($this->eagerRelations, $this->oldEagerRelations);
     }
 
@@ -377,5 +281,17 @@ MSG;
         }
 
         return $this;
+    }
+
+    public function getSubjectClassName()
+    {
+        return $this->subjectClassName;
+    }
+
+    public static function convertResultSetToCollection(ResultsetInterface $resultset, string $modelClass)
+    {
+        return collect($resultset)->map(function($item) use ($modelClass) {
+            return new $modelClass($item);
+        });
     }
 }

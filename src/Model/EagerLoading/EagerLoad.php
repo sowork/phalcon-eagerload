@@ -1,10 +1,11 @@
 <?php
 namespace Sowork\EagerLoad\Model\EagerLoading;
 
-use http\Exception\RuntimeException;
+use Phalcon\Mvc\Model;
 use Phalcon\Mvc\Model\Relation;
-use Phalcon\Mvc\Model\Resultset;
-use Phalcon\Version;
+use Phalcon\Mvc\Model\RelationInterface;
+use Phalcon\Mvc\ModelInterface;
+use Tightenco\Collect\Support\Collection;
 
 /**
  * Represents a level in the relations tree to be eagerly loaded
@@ -19,8 +20,6 @@ final class EagerLoad
     private $parent;
     /** @var null|\Phalcon\Mvc\ModelInterface[] */
     private $subject;
-    /** @var boolean */
-    private static $isPhalcon2;
     /** @var EagerLoad[] */
     private $delayLoads;
     private $aliasName;
@@ -28,21 +27,29 @@ final class EagerLoad
 
     /**
      * @param Relation         $relation
-     * @param null|callable    $constraints
+     * @param null|\Closure    $constraints
      * @param Loader|EagerLoad $parent
      * @param                  $aliasName
      */
-    public function __construct(Relation $relation, $constraints, $parent, $aliasName, $loader)
+    public function __construct(Relation $relation, ?\Closure $constraints, $parent, string $aliasName, $loader)
     {
-        if (static::$isPhalcon2 === null) {
-            static::$isPhalcon2 = version_compare(Version::get(), '2.0.0') >= 0;
-        }
-
         $this->relation    = $relation;
         $this->constraints = is_callable($constraints) ? $constraints : null;
         $this->parent      = $parent;
         $this->loader = $loader;
         $this->aliasName = $aliasName;
+    }
+
+    private function getBindValues($subject, string $relField)
+    {
+        if ($subject instanceof Model) {
+            return [$subject->readAttribute($relField)];
+        }
+
+        if ($subject instanceof Collection) {
+            return $subject->pluck($relField)->all();
+        }
+        return [];
     }
 
     /**
@@ -51,6 +58,25 @@ final class EagerLoad
     public function getSubject()
     {
         return $this->subject;
+    }
+
+    public function getRelationDefinition(RelationInterface $relation): array
+    {
+        $alias                = $relation->getOptions();
+        $definition['alias']                = strtolower($alias['alias']);
+        $definition['relField']             = $relation->getFields();
+        $definition['relReferencedModel']   = $relation->getReferencedModel();
+        $definition['relReferencedField']   = $relation->getReferencedFields();
+        $definition['relIrModel']           = $relation->getIntermediateModel();
+        $definition['relIrField']           = $relation->getIntermediateFields();
+        $definition['relIrReferencedField'] = $relation->getIntermediateReferencedFields();
+
+        // PHQL has problems with this slash
+        if ($definition['relReferencedModel'][0] === '\\') {
+            $definition['relReferencedModel'] = ltrim($definition['relReferencedModel'], '\\');
+        }
+
+        return array_values($definition);
     }
 
     /**
@@ -65,191 +91,20 @@ final class EagerLoad
      */
     public function load()
     {
-        $parentSubject = $this->parent->getSubject();
+        $relation = $this->relation;
 
+        $parentSubject = $this->parent->getSubject();
         if (empty($parentSubject)) {
             return $this;
         }
-        
-        $relation = $this->relation;
-
-        $alias                = $relation->getOptions();
-        $alias                = strtolower($alias['alias']);
-        $relField             = $relation->getFields();
-        $relReferencedModel   = $relation->getReferencedModel();
-        $relReferencedField   = $relation->getReferencedFields();
-        $relIrModel           = $relation->getIntermediateModel();
-        $relIrField           = $relation->getIntermediateFields();
-        $relIrReferencedField = $relation->getIntermediateReferencedFields();
-
-        // PHQL has problems with this slash
-        if ($relReferencedModel[0] === '\\') {
-            $relReferencedModel = ltrim($relReferencedModel, '\\');
-        }
-
-        $bindValues = [];
-
-        foreach ($parentSubject as $record) {
-            $bindValues[$record->readAttribute($relField)] = true;
-        }
-
-        $bindValues = array_keys($bindValues);
-
-        $subjectSize         = count($parentSubject);
-        $isManyToManyForMany = false;
 
         $builder = new QueryBuilder;
-        $builder->from($relReferencedModel);
-
-        // many-to-many
-        if ($isThrough = $relation->isThrough()) {
-            if ($subjectSize === 1) {
-                // The query is for a single model
-                $builder
-                    ->innerJoin(
-                        $relIrModel,
-                        sprintf(
-                            '[%s].[%s] = [%s].[%s]',
-                            $relIrModel,
-                            $relIrReferencedField,
-                            $relReferencedModel,
-                            $relReferencedField
-                        )
-                    )
-                    ->inWhere("[{$relIrModel}].[{$relIrField}]", $bindValues)
-                ;
-            } else {
-                // The query is for many models, so it's needed to execute an
-                // extra query
-                $isManyToManyForMany = true;
-
-                $relIrValues = new QueryBuilder;
-                $relIrValues = $relIrValues
-                    ->from($relIrModel)
-                    ->inWhere("[{$relIrModel}].[{$relIrField}]", $bindValues)
-                    ->getQuery()
-                    ->execute()
-                    ->setHydrateMode(Resultset::HYDRATE_ARRAYS)
-                ;
-
-                $bindValues = $modelReferencedModelValues = [];
-
-                foreach ($relIrValues as $row) {
-                    $bindValues[$row[$relIrReferencedField]] = true;
-                    $modelReferencedModelValues[$row[$relIrField]][$row[$relIrReferencedField]] = true;
-                }
-
-                unset($relIrValues, $row);
-
-                $builder->inWhere("[{$relReferencedField}]", array_keys($bindValues));
-            }
-        } else {
-            $builder->inWhere("[{$relReferencedField}]", $bindValues);
-        }
-
         $builder->setCurrentEagerLoad($this, $this->aliasName, $this->loader);
         if ($this->constraints) {
             call_user_func($this->constraints, $builder);
         }
 
-        $records = [];
-
-        if ($isManyToManyForMany) {
-            foreach ($builder->getQuery()->execute() as $record) {
-                $records[$record->readAttribute($relReferencedField)] = $record;
-            }
-
-            foreach ($parentSubject as $record) {
-                $referencedFieldValue = $record->readAttribute($relField);
-
-                if (isset($modelReferencedModelValues[$referencedFieldValue])) {
-                    $referencedModels = [];
-
-                    foreach ($modelReferencedModelValues[$referencedFieldValue] as $idx => $_) {
-                        $referencedModels[] = $records[$idx];
-                    }
-
-                    $record->{$alias} = $referencedModels;
-
-                    if (static::$isPhalcon2) {
-                        $record->{$alias} = null;
-                        $record->{$alias} = $referencedModels;
-                    }
-                } else {
-                    $record->{$alias} = null;
-                    $record->{$alias} = [];
-                }
-            }
-
-            $records = array_values($records);
-        } else {
-            // We expect a single object or a set of it
-            $isSingle = !$isThrough && (
-                $relation->getType() === Relation::HAS_ONE ||
-                $relation->getType() === Relation::BELONGS_TO
-            );
-
-            if ($subjectSize === 1) {
-                // Keep all records in memory
-                foreach ($builder->getQuery()->execute() as $record) {
-                    $records[] = $record;
-                }
-
-                $record = $parentSubject[0];
-
-                if ($isSingle) {
-                    $record->{$alias} = empty($records) ? null : $records[0];
-                } else {
-                    if (empty($records)) {
-                        $record->{$alias} = null;
-                        $record->{$alias} = [];
-                    } else {
-                        $record->{$alias} = $records;
-
-                        if (static::$isPhalcon2) {
-                            $record->{$alias} = null;
-                            $record->{$alias} = $records;
-                        }
-                    }
-                }
-            } else {
-                $indexedRecords = [];
-
-                // Keep all records in memory
-                foreach ($builder->getQuery()->execute() as $record) {
-                    $records[] = $record;
-
-                    $foreignIdValue = $record->readAttribute($relReferencedField);
-                    if (!$foreignIdValue) {
-                        throw new \RuntimeException(sprintf('%s may lack the %s foreign key column', $alias, $relReferencedField));
-                    }
-                    if ($isSingle) {
-                        $indexedRecords[$foreignIdValue] = $record;
-                    } else {
-                        $indexedRecords[$foreignIdValue][] = $record;
-                    }
-                }
-
-                foreach ($parentSubject as $record) {
-                    $referencedFieldValue = $record->readAttribute($relField);
-
-                    if (isset($indexedRecords[$referencedFieldValue])) {
-                        $record->{$alias} = $indexedRecords[$referencedFieldValue];
-
-                        if (static::$isPhalcon2 && is_array($indexedRecords[$referencedFieldValue])) {
-                            $record->{$alias} = null;
-                            $record->{$alias} = $indexedRecords[$referencedFieldValue];
-                        }
-                    } else {
-                        $record->{$alias} = null;
-
-                        if (!$isSingle) {
-                            $record->{$alias} = [];
-                        }
-                    }
-                }
-            }
-        }
+        $records = $this->getEagerLoadData($parentSubject, $builder, $relation);
 
         $this->subject = $records;
         if (isset($this->delayLoads[$this->aliasName])) {
@@ -260,6 +115,146 @@ final class EagerLoad
         }
 
         return $this;
+    }
+
+    private function getEagerLoadData($parentSubject, QueryBuilder $builder, RelationInterface $relation)
+    {
+        if ($relation->getType() === Relation::HAS_ONE || $relation->getType() === Relation::BELONGS_TO) {
+            return $this->parseOneToOne($parentSubject, $builder, $relation);
+        }
+
+        if ($relation->getType() === Relation::HAS_MANY) {
+            return $this->parseOneToMany($parentSubject, $builder, $relation);
+        }
+
+        if ($relation->isThrough()) {
+            return $this->parseManyToMany($parentSubject, $builder, $relation);
+        }
+
+        return [];
+    }
+
+    /**
+     * @param Collection|ModelInterface  $parentSubject
+     * @param QueryBuilder      $builder
+     * @param RelationInterface $relation
+     */
+    private function parseOneToOne($parentSubject, QueryBuilder $builder, RelationInterface $relation)
+    {
+        list($alias, $relField, $relReferencedModel, $relReferencedField) = $this->getRelationDefinition($relation);
+
+        if ($relation->getType() !== Relation::HAS_ONE && $relation->getType() !== Relation::BELONGS_TO) {
+            return $parentSubject;
+        }
+        $bindValues = $this->getBindValues($parentSubject, $relField);
+        $builder->inWhere("[{$relReferencedField}]", $bindValues);
+
+        $records = Loader::convertResultSetToCollection($builder->from($relReferencedModel)->getQuery()->execute(), $relReferencedModel);
+        if ($parentSubject instanceof ModelInterface) {
+            $parentSubject->$alias = $records->first();
+            return $records;
+        }
+
+        if ($parentSubject instanceof Collection) {
+            $indexedRecordsCollections = $records->keyBy($relReferencedField);
+            $parentSubject->map(function($item) use ($relField, $alias, $indexedRecordsCollections) {
+                // fix phalcon bug   https://github.com/phalcon/cphalcon/issues/10556
+                $item->$alias = null;
+                $item->$alias = $indexedRecordsCollections->get($item->$relField);
+                return $item;
+            });
+        }
+
+        return $records;
+    }
+
+    /**
+     * @param Collection|ModelInterface  $parentSubject
+     * @param QueryBuilder               $builder
+     * @param RelationInterface          $relation
+     */
+    private function parseOneToMany($parentSubject, QueryBuilder $builder, RelationInterface $relation)
+    {
+        list($alias, $relField, $relReferencedModel, $relReferencedField) = $this->getRelationDefinition($relation);
+
+        if ($relation->getType() !== Relation::HAS_MANY) {
+            return $parentSubject;
+        }
+        $bindValues = $this->getBindValues($parentSubject, $relField);
+        $builder->inWhere("[{$relReferencedField}]", $bindValues);
+
+        $records = Loader::convertResultSetToCollection($builder->from($relReferencedModel)->getQuery()->execute(), $relReferencedModel);
+
+        if ($parentSubject instanceof ModelInterface) {
+            $parentSubject->$alias = null;
+            $parentSubject->$alias = $records->all();
+            return $records;
+        }
+
+        if ($parentSubject instanceof Collection) {
+            $indexedRecordsCollections = $records->groupBy($relReferencedField);
+            $parentSubject->transform(function($item) use ($relField, $alias, $indexedRecordsCollections, $relReferencedField) {
+                // fix phalcon bug   https://github.com/phalcon/cphalcon/issues/10556
+                $item->$alias = null;
+                $item->$alias[] = $indexedRecordsCollections->get($item->$relField);
+                return $item;
+            });
+        }
+
+        return $records;
+    }
+
+    /**
+     * @param Collection|ModelInterface  $parentSubject
+     * @param QueryBuilder               $builder
+     * @param RelationInterface          $relation
+     */
+    private function parseManyToMany($parentSubject, QueryBuilder $builder, RelationInterface $relation)
+    {
+        list($alias, $relField, $relReferencedModel, $relReferencedField, $relIrModel, $relIrField, $relIrReferencedField) = $this->getRelationDefinition($relation);
+
+        if (!$relation->isThrough()) {
+            return $parentSubject;
+        }
+
+        $bindValues = $this->getBindValues($parentSubject, $relField);
+
+        $indexedRecordsRelIrData = (new QueryBuilder)->from($relIrModel)
+            ->inWhere("[{$relIrField}]", $bindValues)
+            ->getQuery()
+            ->execute();
+        $intermediateCollection = collect($indexedRecordsRelIrData);
+
+        $intermediateBindValues = $intermediateCollection->pluck($relIrReferencedField)
+            ->all();
+
+        $records = Loader::convertResultSetToCollection(
+            $builder->from($relReferencedModel)
+                ->inWhere("[{$relReferencedField}]", $intermediateBindValues)
+                ->getQuery()
+                ->execute()
+        , $relReferencedModel);
+
+        $indexedRecordsCollections = $intermediateCollection->groupBy($relIrField)->transform(function($item) use ($records, $relIrReferencedField, $relReferencedField) {
+            return $records->whereIn($relReferencedField, $item->pluck($relIrReferencedField));
+        });
+
+        if ($parentSubject instanceof ModelInterface) {
+            $parentSubject->$alias = null;
+            $parentSubject->$alias = $indexedRecordsCollections->all();
+            return $records;
+        }
+
+        if ($parentSubject instanceof Collection) {
+            $parentSubject->transform(function($item) use ($relField, $alias, $indexedRecordsCollections) {
+                // fix phalcon bug   https://github.com/phalcon/cphalcon/issues/10556
+                $item->$alias = null;
+                $item->$alias[] = $indexedRecordsCollections->get($item->$relField);
+                return $item;
+            });
+        }
+
+        return $records;
     }
 
     public function delayLoad(EagerLoad $load, $withAliasName) {

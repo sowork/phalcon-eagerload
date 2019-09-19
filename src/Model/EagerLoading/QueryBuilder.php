@@ -1,7 +1,6 @@
 <?php
 namespace Sowork\EagerLoad\Model\EagerLoading;
 
-use Phalcon\Mvc\Model\Manager;
 use Phalcon\Mvc\Model\Query\Builder;
 
 final class QueryBuilder extends Builder
@@ -41,9 +40,7 @@ final class QueryBuilder extends Builder
 
     public function with($relations)
     {
-//        dd($relations);
         $arguments = is_string($relations) ? func_get_args() : $relations;
-//        dump($arguments);
         $isNestedLoader = true;
         if (!$this->loader) {
             $isNestedLoader = false;
@@ -51,12 +48,10 @@ final class QueryBuilder extends Builder
             unset($arguments[0]);
             unset($arguments[1]);
         }
-//        dump(($arguments));
         if (!$arguments) {
             return $this;
         }
         $relations = $this->loader->parseArguments($arguments);
-//        dump($this->currentAliasName);
         if ($this->currentAliasName && $isNestedLoader) {
             $nestedRelations = [];
             foreach ($relations as $key => $relation) {

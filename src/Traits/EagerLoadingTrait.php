@@ -1,6 +1,8 @@
 <?php
 namespace Sowork\EagerLoad\Traits;
 
+use Phalcon\Mvc\Model\ResultsetInterface;
+use Sowork\EagerLoad\Model\EagerLoading\Loader;
 use Sowork\EagerLoad\Model\EagerLoading\QueryBuilder;
 
 trait EagerLoadingTrait
@@ -10,11 +12,12 @@ trait EagerLoadingTrait
 
     public static function find($params = null)
     {
+        /** @var ResultsetInterface $results */
         $results = parent::find($params);
         if (static::$eagerWith) {
             return self::callWith($results, __CLASS__);
         }
-        return $results;
+        return Loader::convertResultSetToCollection($results, __CLASS__);
     }
 
     public static function findFirst($params = null)
@@ -40,5 +43,13 @@ trait EagerLoadingTrait
          return (new QueryBuilder())->with(
              array_merge([$results, $modelName], static::$eagerWith)
          );
+    }
+
+    public function load($relations)
+    {
+
+        return (new QueryBuilder())->with(
+            array_merge([$this, get_class($this)], is_string($relations) ? func_get_args() : $relations)
+        );
     }
 }
