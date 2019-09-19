@@ -96,4 +96,4 @@ composer require sowork/phalcon-eagerload
 
 ### 集合操作
 
-> 当返回结果是一个集合时，更方便我们对数据结果进行处理，具体集合的操作方法请看[相关文档](#https://xueyuanjun.com/post/19507.html)
+> 当返回结果是一个集合时，更方便我们对数据结果进行处理，具体集合的操作方法请看[相关文档](https://xueyuanjun.com/post/19507.html)
