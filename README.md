@@ -64,7 +64,7 @@ composer require sowork/phalcon-eagerload
   
   // 加载带条件约束的关联关系
   $users = App\User::with(['posts' => function ($query) {
-      $query->where('title', 'like', '%first%');
+      $query->where('id = 10');
   }])->find();
   ```
 
@@ -82,7 +82,7 @@ composer require sowork/phalcon-eagerload
     // 也可以通过条件限制
   
     $books->load(['author' => function ($query) {
-        $query->orderBy('published_date', 'asc');
+        $query->orderBy('published_date desc');
     }]);
 
   ```
